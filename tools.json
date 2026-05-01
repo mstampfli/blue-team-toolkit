@@ -1,0 +1,176 @@
+{
+  "categories": {
+    "edr_dfir": "EDR / DFIR / Hunting",
+    "telemetry": "Logging / Telemetry",
+    "siem_net": "SIEM / Network detection",
+    "recon": "Reconnaissance",
+    "vuln_scan": "Vulnerability scanners",
+    "privesc_audit": "Privilege escalation audit",
+    "ad": "Active Directory",
+    "rootkit_hunt": "Rootkit hunting",
+    "memory": "Memory acquisition",
+    "net_defense": "Network defense",
+    "honeypot": "Honeypots / deception",
+    "forensics": "Forensics",
+    "config": "Detection configs / rules"
+  },
+  "tools": [
+    {"id":"velociraptor","name":"Velociraptor","category":"edr_dfir","description":"Agent-based fleet hunting","star":true,
+     "linux":{"method":"github_release","repo":"Velocidex/velociraptor","pattern":"velociraptor-v[0-9.]+-linux-amd64$"},
+     "windows":{"method":"github_release","repo":"Velocidex/velociraptor","pattern":"velociraptor-v[0-9.]+-windows-amd64.exe$"}},
+
+    {"id":"chainsaw","name":"chainsaw","category":"edr_dfir","description":"Sigma scanner over Windows EVTX","star":true,
+     "linux":{"method":"github_release","repo":"WithSecureLabs/chainsaw","pattern":"chainsaw_x86_64-unknown-linux-gnu.tar.gz$"},
+     "windows":{"method":"github_release","repo":"WithSecureLabs/chainsaw","pattern":"chainsaw_x86_64-pc-windows-msvc.zip$"}},
+
+    {"id":"hayabusa","name":"hayabusa","category":"edr_dfir","description":"Windows event log fast hunter","star":false,
+     "linux":{"method":"github_release","repo":"Yamato-Security/hayabusa","pattern":"hayabusa-.*-linux-x64.zip$"},
+     "windows":{"method":"github_release","repo":"Yamato-Security/hayabusa","pattern":"hayabusa-.*-win-x64.zip$"}},
+
+    {"id":"loki","name":"Loki","category":"edr_dfir","description":"IOC scanner with curated APT rules","star":false,
+     "linux":{"method":"github_release","repo":"Neo23x0/Loki","pattern":"loki_.*\\.zip$"},
+     "windows":{"method":"github_release","repo":"Neo23x0/Loki","pattern":"loki_.*\\.zip$"}},
+
+    {"id":"yara","name":"YARA","category":"edr_dfir","description":"Pattern matching for binaries","star":false,
+     "linux":{"method":"apt","package":"yara"},
+     "windows":{"method":"github_release","repo":"VirusTotal/yara","pattern":"yara-.*-win64.zip$"}},
+
+    {"id":"autoruns","name":"Autoruns (Sysinternals)","category":"edr_dfir","description":"THE Windows persistence enumeration tool","star":true,
+     "windows":{"method":"url","url":"https://download.sysinternals.com/files/Autoruns.zip","filename":"Autoruns.zip"}},
+
+    {"id":"sysinternals","name":"Sysinternals Suite","category":"edr_dfir","description":"Procmon / Procexp / Sigcheck / etc","star":false,
+     "windows":{"method":"url","url":"https://download.sysinternals.com/files/SysinternalsSuite.zip","filename":"SysinternalsSuite.zip"}},
+
+    {"id":"pesieve","name":"PE-sieve","category":"edr_dfir","description":"Detects in-memory injection (Meterpreter signature)","star":false,
+     "windows":{"method":"github_release","repo":"hasherezade/pe-sieve","pattern":"pe-sieve64.exe$"}},
+
+    {"id":"hollowshunter","name":"hollows_hunter","category":"edr_dfir","description":"Scans all processes for hollowing","star":false,
+     "windows":{"method":"github_release","repo":"hasherezade/hollows_hunter","pattern":"hollows_hunter64.exe$"}},
+
+    {"id":"sysmon","name":"Sysmon","category":"telemetry","description":"Deep Windows process/network/file telemetry","star":true,
+     "windows":{"method":"url","url":"https://download.sysinternals.com/files/Sysmon.zip","filename":"Sysmon.zip"}},
+
+    {"id":"sysmon-config","name":"sysmon-config (SwiftOnSecurity)","category":"config","description":"Curated Sysmon config","star":true,
+     "linux":{"method":"git_clone","repo":"https://github.com/SwiftOnSecurity/sysmon-config"},
+     "windows":{"method":"git_clone","repo":"https://github.com/SwiftOnSecurity/sysmon-config"}},
+
+    {"id":"sysmon-modular","name":"sysmon-modular (olafhartong)","category":"config","description":"Modular ATT&CK-mapped Sysmon config","star":false,
+     "linux":{"method":"git_clone","repo":"https://github.com/olafhartong/sysmon-modular"},
+     "windows":{"method":"git_clone","repo":"https://github.com/olafhartong/sysmon-modular"}},
+
+    {"id":"auditd-rules","name":"Neo23x0 auditd ruleset","category":"config","description":"Linux auditd ruleset","star":true,
+     "linux":{"method":"git_clone","repo":"https://github.com/Neo23x0/auditd"}},
+
+    {"id":"sigma","name":"Sigma rules","category":"config","description":"Generic SIEM detection rules","star":true,
+     "linux":{"method":"git_clone","repo":"https://github.com/SigmaHQ/sigma"},
+     "windows":{"method":"git_clone","repo":"https://github.com/SigmaHQ/sigma"}},
+
+    {"id":"nmap","name":"nmap","category":"recon","description":"Port + service scanning","star":true,
+     "linux":{"method":"apt","package":"nmap"},
+     "windows":{"method":"winget","package":"Insecure.Nmap"}},
+
+    {"id":"masscan","name":"masscan","category":"recon","description":"Internet-scale TCP scanner","star":false,
+     "linux":{"method":"apt","package":"masscan"}},
+
+    {"id":"netexec","name":"NetExec (nxc)","category":"recon","description":"SMB/LDAP/MSSQL/WinRM enum + cred testing","star":true,
+     "linux":{"method":"pipx","package":"git+https://github.com/Pennyw0rth/NetExec"},
+     "windows":{"method":"pipx","package":"git+https://github.com/Pennyw0rth/NetExec"}},
+
+    {"id":"enum4linux-ng","name":"enum4linux-ng","category":"recon","description":"SMB enumeration","star":false,
+     "linux":{"method":"apt","package":"enum4linux-ng"}},
+
+    {"id":"whatweb","name":"WhatWeb","category":"recon","description":"Identify web tech stack (CMS, framework, server)","star":true,
+     "linux":{"method":"apt","package":"whatweb"}},
+
+    {"id":"dnsrecon","name":"dnsrecon","category":"recon","description":"DNS enum + subdomain brute","star":false,
+     "linux":{"method":"apt","package":"dnsrecon"}},
+
+    {"id":"subfinder","name":"subfinder","category":"recon","description":"Passive subdomain enumeration","star":false,
+     "linux":{"method":"github_release","repo":"projectdiscovery/subfinder","pattern":"subfinder_.*_linux_amd64.zip$"}},
+
+    {"id":"testssl","name":"testssl.sh","category":"recon","description":"TLS/SSL config audit (cipher suites, weak protocols)","star":false,
+     "linux":{"method":"git_clone","repo":"https://github.com/drwetter/testssl.sh"}},
+
+    {"id":"gobuster","name":"gobuster","category":"recon","description":"Web directory brute force","star":false,
+     "linux":{"method":"apt","package":"gobuster"}},
+
+    {"id":"nikto","name":"nikto","category":"vuln_scan","description":"Web server vuln scanner","star":false,
+     "linux":{"method":"apt","package":"nikto"}},
+
+    {"id":"nuclei","name":"nuclei","category":"vuln_scan","description":"Template-based CVE scanner","star":true,
+     "linux":{"method":"github_release","repo":"projectdiscovery/nuclei","pattern":"nuclei_.*_linux_amd64.zip$"},
+     "windows":{"method":"github_release","repo":"projectdiscovery/nuclei","pattern":"nuclei_.*_windows_amd64.zip$"}},
+
+    {"id":"trivy","name":"Trivy","category":"vuln_scan","description":"Container/filesystem CVE scanner","star":false,
+     "linux":{"method":"apt","package":"trivy"}},
+
+    {"id":"openvas","name":"OpenVAS / Greenbone","category":"vuln_scan","description":"FOSS vuln scanner","star":false,
+     "linux":{"method":"manual","note":"sudo apt install gvm; gvm-setup; expect 30-60 min interactive install"}},
+
+    {"id":"linpeas","name":"LinPEAS","category":"privesc_audit","description":"Linux privesc enumeration","star":true,
+     "linux":{"method":"url","url":"https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh","filename":"linpeas.sh"}},
+
+    {"id":"winpeas","name":"WinPEAS","category":"privesc_audit","description":"Windows privesc enumeration","star":true,
+     "windows":{"method":"url","url":"https://github.com/peass-ng/PEASS-ng/releases/latest/download/winPEASx64.exe","filename":"winPEASx64.exe"}},
+
+    {"id":"linux-exploit-suggester","name":"linux-exploit-suggester","category":"privesc_audit","description":"Match kernel to known exploits","star":false,
+     "linux":{"method":"url","url":"https://raw.githubusercontent.com/mzet-/linux-exploit-suggester/master/linux-exploit-suggester.sh","filename":"linux-exploit-suggester.sh"}},
+
+    {"id":"wesng","name":"wesng","category":"privesc_audit","description":"Windows Exploit Suggester (next-gen)","star":false,
+     "linux":{"method":"pipx","package":"wesng"},
+     "windows":{"method":"pipx","package":"wesng"}},
+
+    {"id":"lynis","name":"Lynis","category":"privesc_audit","description":"Linux audit / hardening assessor","star":true,
+     "linux":{"method":"apt","package":"lynis"}},
+
+    {"id":"sharphound","name":"SharpHound","category":"ad","description":"BloodHound collector","star":true,
+     "windows":{"method":"github_release","repo":"BloodHoundAD/SharpHound","pattern":"SharpHound-v.*\\.zip$"}},
+
+    {"id":"bloodhound","name":"BloodHound CE","category":"ad","description":"AD attack path visualizer","star":true,
+     "linux":{"method":"manual","note":"docker compose up — see https://github.com/SpecterOps/BloodHound"}},
+
+    {"id":"pingcastle","name":"PingCastle","category":"ad","description":"AD security health check","star":false,
+     "windows":{"method":"manual","note":"Download from https://www.pingcastle.com/download/"}},
+
+    {"id":"chkrootkit","name":"chkrootkit","category":"rootkit_hunt","description":"Linux rootkit scanner","star":false,
+     "linux":{"method":"apt","package":"chkrootkit"}},
+
+    {"id":"rkhunter","name":"rkhunter","category":"rootkit_hunt","description":"Linux rootkit scanner","star":false,
+     "linux":{"method":"apt","package":"rkhunter"}},
+
+    {"id":"unhide","name":"unhide","category":"rootkit_hunt","description":"Find hidden processes/sockets","star":false,
+     "linux":{"method":"apt","package":"unhide"}},
+
+    {"id":"avml","name":"avml","category":"memory","description":"Microsoft Linux memory acquisition","star":false,
+     "linux":{"method":"github_release","repo":"microsoft/avml","pattern":"avml$"}},
+
+    {"id":"winpmem","name":"winpmem","category":"memory","description":"Windows memory acquisition","star":false,
+     "windows":{"method":"github_release","repo":"Velocidex/WinPmem","pattern":"winpmem_.*\\.exe$"}},
+
+    {"id":"volatility3","name":"volatility3","category":"memory","description":"Memory forensics framework","star":false,
+     "linux":{"method":"pipx","package":"volatility3"},
+     "windows":{"method":"pipx","package":"volatility3"}},
+
+    {"id":"suricata","name":"Suricata","category":"siem_net","description":"Network IDS","star":false,
+     "linux":{"method":"apt","package":"suricata"}},
+
+    {"id":"zeek","name":"Zeek","category":"siem_net","description":"Network metadata logger","star":false,
+     "linux":{"method":"apt","package":"zeek"}},
+
+    {"id":"wireshark","name":"Wireshark","category":"forensics","description":"Packet capture / analysis","star":false,
+     "linux":{"method":"apt","package":"wireshark"},
+     "windows":{"method":"winget","package":"WiresharkFoundation.Wireshark"}},
+
+    {"id":"tcpdump","name":"tcpdump","category":"forensics","description":"CLI packet capture","star":true,
+     "linux":{"method":"apt","package":"tcpdump"}},
+
+    {"id":"fail2ban","name":"fail2ban","category":"net_defense","description":"Brute-force IP banning","star":true,
+     "linux":{"method":"apt","package":"fail2ban"}},
+
+    {"id":"pihole","name":"Pi-hole","category":"net_defense","description":"DNS sinkhole","star":false,
+     "linux":{"method":"manual","note":"curl -sSL https://install.pi-hole.net | bash  (interactive installer)"}},
+
+    {"id":"cowrie","name":"cowrie","category":"honeypot","description":"SSH/Telnet honeypot","star":false,
+     "linux":{"method":"git_clone","repo":"https://github.com/cowrie/cowrie"}}
+  ]
+}
