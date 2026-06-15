@@ -41,7 +41,7 @@
     {"id":"sysinternals","name":"Sysinternals Suite","category":"edr_dfir","description":"Procmon / Procexp / Sigcheck / etc","star":false,
      "windows":{"method":"url","url":"https://download.sysinternals.com/files/SysinternalsSuite.zip","filename":"SysinternalsSuite.zip"}},
 
-    {"id":"pesieve","name":"PE-sieve","category":"edr_dfir","description":"Detects in-memory injection (Meterpreter signature)","star":false,
+    {"id":"pesieve","name":"PE-sieve","category":"edr_dfir","description":"Detects in-memory injection / process hollowing","star":false,
      "windows":{"method":"github_release","repo":"hasherezade/pe-sieve","pattern":"pe-sieve64.exe$"}},
 
     {"id":"hollowshunter","name":"hollows_hunter","category":"edr_dfir","description":"Scans all processes for hollowing","star":false,
@@ -127,7 +127,7 @@
      "windows":{"method":"github_release","repo":"BloodHoundAD/SharpHound","pattern":"SharpHound-v.*\\.zip$"}},
 
     {"id":"bloodhound","name":"BloodHound CE","category":"ad","description":"AD attack path visualizer","star":true,
-     "linux":{"method":"manual","note":"docker compose up — see https://github.com/SpecterOps/BloodHound"}},
+     "linux":{"method":"manual","note":"docker compose up, see https://github.com/SpecterOps/BloodHound"}},
 
     {"id":"pingcastle","name":"PingCastle","category":"ad","description":"AD security health check","star":false,
      "windows":{"method":"manual","note":"Download from https://www.pingcastle.com/download/"}},
