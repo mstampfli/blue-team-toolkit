@@ -48,12 +48,12 @@ ROOT_UID0_OTHER=$(awk -F: '$3==0 && $1!="root"' /etc/passwd | wc -l)
 EMPTY_PWD=$(awk -F: '$2=="" {print $1}' /etc/shadow 2>/dev/null | wc -l)
 NF_TABLES_LOADED=$(lsmod 2>/dev/null | grep -E '^nf_tables' >/dev/null && echo true || echo false)
 
-# Listening ports — port-only (legacy)
+# Listening ports, port-only (legacy)
 LISTEN_JSON=$(ss -Hltn 2>/dev/null | awk '{print $4}' | sed 's/.*://' | sort -un | head -30 \
   | jq -R . | jq -s .)
 [[ -z "$LISTEN_JSON" || "$LISTEN_JSON" == "null" ]] && LISTEN_JSON='[]'
 
-# Listening detailed — with bind interface + exposure level
+# Listening detailed, with bind interface + exposure level
 # bind=0.0.0.0/* = any interface (potentially reachable from network)
 # bind=127.x.x.x/[::1] = localhost only
 # bind=10.x.x.x = specific interface (private LAN)
@@ -78,7 +78,7 @@ LISTEN_DETAILED=$(
 # Anything bound to 0.0.0.0 is potentially exposed externally (depends on firewall)
 EXPOSED_PORT_COUNT=$(echo "$LISTEN_DETAILED" | jq '[.[] | select(.exposure == "all_interfaces")] | length')
 
-# Capability files (CAP_*) — non-empty means binaries can do privileged things without setuid
+# Capability files (CAP_*), non-empty means binaries can do privileged things without setuid
 CAPS_COUNT=$(sudo getcap -r / 2>/dev/null | grep -vE '^$|/(ping|arping|traceroute|tracepath|fping)$|/usr/bin/(ping|arping|traceroute|tracepath|fping)' | wc -l)
 
 # Service principals running as root
@@ -208,7 +208,7 @@ heavy=""
 if (( ${#opts[@]} )); then
   clear
   heavy=$(whiptail --title "Heavy passes" \
-    --checklist "Pick which heavy tools to run after map (Space to toggle, Enter to confirm).\nAll output goes to files in output/ — your terminal stays clean." \
+    --checklist "Pick which heavy tools to run after map (Space to toggle, Enter to confirm).\nAll output goes to files in output/, your terminal stays clean." \
     20 80 6 "${opts[@]}" 3>&1 1>&2 2>&3) || heavy=""
 fi
 

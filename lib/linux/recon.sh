@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Network recon — INTERNAL sweep + EXTERNAL exposure check.
+# Network recon, INTERNAL sweep + EXTERNAL exposure check.
 # Internal: nmap live discovery + service detect, NetExec SMB, whatweb on web ports.
 # External: Shodan InternetDB (no API key needed), NAT-hairpin nmap, DNS + crt.sh.
 set -uo pipefail
@@ -47,7 +47,7 @@ nmap_service_args() {
 }
 
 nmap_disco_args() {
-  # Live discovery — same in both modes (fast)
+  # Live discovery, same in both modes (fast)
   echo "-sn -T4 -PE -PP -PS21,22,23,25,80,113,443,445,3389 -PA80,443,3389"
 }
 
@@ -60,7 +60,7 @@ init_targets() {
 
 rebuild_targets() {
   {
-    echo "# Recon targets — auto-detected $(date +'%F %T'). Edit before running if needed."
+    echo "# Recon targets, auto-detected $(date +'%F %T'). Edit before running if needed."
     echo "# Format: <type> <value>  [# comment]"
     echo "# type = internal_cidr | external_ip | external_domain"
     echo
@@ -87,11 +87,11 @@ rebuild_targets() {
 
 auto_recon() {
   # Re-detect everything fresh, then run internal on each + external, no prompts.
-  echo "[recon] AUTO mode — re-detecting targets..."
+  echo "[recon] AUTO mode, re-detecting targets..."
   rebuild_targets
   cat "$TARGETS_FILE" | grep -vE '^\s*#|^\s*$'
   echo
-  echo "[recon] sleeping 3s — Ctrl-C to abort"
+  echo "[recon] sleeping 3s, Ctrl-C to abort"
   sleep 3
   internal_recon
   external_recon
@@ -154,7 +154,7 @@ internal_recon() {
   local livefile="$OUTPUT_DIR/recon-internal-live-$stamp.txt"
   : > "$livefile"
 
-  # 1) Live host discovery (nmap -sn) per CIDR — fast even in thorough mode
+  # 1) Live host discovery (nmap -sn) per CIDR, fast even in thorough mode
   local disco_args; disco_args=$(nmap_disco_args)
   for cidr in $cidrs; do
     local clean="${cidr//\//_}"
@@ -184,7 +184,7 @@ internal_recon() {
     sudo nmap $svc_args -iL "$livefile" -oA "$SVC"
   parse_nmap_findings "$SVC.nmap" "internal"
 
-  # Parse vulners script output (when THOROUGH) — these are CLEAR CVE matches
+  # Parse vulners script output (when THOROUGH), these are CLEAR CVE matches
   if [[ "$THOROUGH" == "1" ]]; then
     grep -E '\| *(CVE-[0-9]+-[0-9]+|VULNERABLE)' "$SVC.nmap" 2>/dev/null | while IFS= read -r line; do
       cve=$(echo "$line" | grep -oE 'CVE-[0-9]{4}-[0-9]+' | head -1)
@@ -234,7 +234,7 @@ internal_recon() {
       done
     fi
 
-    # nuclei — runs in both modes; severity threshold differs
+    # nuclei, runs in both modes; severity threshold differs
     local NUCLEI_BIN
     NUCLEI_BIN=$(ensure_extracted "nuclei*linux*.zip" "nuclei")
     if [[ -n "$NUCLEI_BIN" ]]; then
@@ -262,7 +262,7 @@ internal_recon() {
   fi
   rm -f "$web_hosts"
 
-  # 5) OpenVAS — only in THOROUGH mode if running
+  # 5) OpenVAS, only in THOROUGH mode if running
   if [[ "$THOROUGH" == "1" ]]; then
     openvas_dispatch "$cidrs" "$stamp"
   fi
@@ -291,7 +291,7 @@ To set up (one-time, 30-60 min interactive):
   sudo gvm-start        # launches gsad + ospd-openvas + gvmd
 
 Once running, web UI: https://localhost:9392
-Or skip web UI and re-run this thorough scan — toolkit will drive gvm-cli.
+Or skip web UI and re-run this thorough scan, toolkit will drive gvm-cli.
 EOF
     read -rp "Press Enter to continue..."
     return
@@ -312,7 +312,7 @@ EOF
   echo "GVM is running. Toolkit will create a target + task and start a scan."
   read -rp "GVM admin user [admin]: " gvm_user; gvm_user="${gvm_user:-admin}"
   read -rsp "GVM admin password: " gvm_pass; echo
-  [[ -z "$gvm_pass" ]] && { echo "No password — skipping OpenVAS."; read -rp "Press Enter..."; return; }
+  [[ -z "$gvm_pass" ]] && { echo "No password, skipping OpenVAS."; read -rp "Press Enter..."; return; }
 
   local target_hosts
   target_hosts=$(echo "$cidrs" | tr '\n' ',' | sed 's/,$//')
@@ -361,7 +361,7 @@ When done, export the report:
     --xml '<get_reports task_id="$task_id" report_format_id="a994b278-1f62-11e1-96ac-406186ea4fc5"/>' \\
     > $OUTPUT_DIR/openvas-report-$stamp.xml
 
-Toolkit doesn't poll/wait — task may run for hours. Re-check via web UI.
+Toolkit doesn't poll/wait, task may run for hours. Re-check via web UI.
 EOF
   record_finding "openvas_scan_started" "$target_hosts" "" "{\"task_id\":\"$task_id\",\"confidence\":\"informational\"}"
   read -rp "Press Enter to continue..."
@@ -384,9 +384,9 @@ external_recon() {
     cat <<EOF
 [recon] No internet detected.
 
-In an air-gapped exercise, "external" view means scanning your assets from a
+In an air-gapped environment, "external" view means scanning your assets from a
 DIFFERENT VLAN (your DMZ side, your "user" VLAN, etc). Add those CIDRs as
-'internal_cidr' lines in $TARGETS_FILE and run INTERNAL — that gives you the
+'internal_cidr' lines in $TARGETS_FILE and run INTERNAL, that gives you the
 "what does the other side see" picture for each VLAN you control.
 
 Skipping Shodan + crt.sh (both require internet). Running NAT-hairpin nmap
@@ -395,7 +395,7 @@ EOF
     read -rp "Press Enter to continue..."
   fi
 
-  # 1) Shodan InternetDB — passive, free, no API key (only if internet)
+  # 1) Shodan InternetDB, passive, free, no API key (only if internet)
   if [[ -n "$ips" && "$INTERNET_OK" == "1" ]]; then
     local SH="$OUTPUT_DIR/recon-external-shodan-$stamp.json"
     : > "$SH"
@@ -426,7 +426,7 @@ EOF
     read -rp "Press Enter to continue..."
   fi
 
-  # 2) NAT-hairpin nmap — runs always; toolkit prints the caveat at end
+  # 2) NAT-hairpin nmap, runs always; toolkit prints the caveat at end
   if [[ -n "$ips" ]]; then
     for ip in $ips; do
       local clean="${ip//./_}"
@@ -501,7 +501,7 @@ main() {
   check_internet
   while true; do
     local hdr="Targets: $TARGETS_FILE  |  Internet: $([[ $INTERNET_OK == 1 ]] && echo OK || echo NONE)  |  Depth: $([[ $THOROUGH == 1 ]] && echo FULL || echo QUICK)"
-    mode=$(whiptail --title "Recon — internal + external" --menu \
+    mode=$(whiptail --title "Recon, internal + external" --menu \
       "$hdr\n\nFastest path: AUTO (re-detects + runs everything)" 24 100 9 \
       "AUTO"     "Auto-detect CIDRs + public IP, run INTERNAL+EXTERNAL with no prompts" \
       "TARGETS"  "View / edit recon-targets.txt manually" \

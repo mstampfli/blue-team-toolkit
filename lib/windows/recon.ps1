@@ -1,4 +1,4 @@
-# Network recon — INTERNAL sweep + EXTERNAL exposure check (Windows).
+# Network recon, INTERNAL sweep + EXTERNAL exposure check (Windows).
 $ErrorActionPreference = 'Continue'
 . (Join-Path $PSScriptRoot 'common.ps1')
 
@@ -10,7 +10,7 @@ $Script:InternetOK  = $false
 
 function Rebuild-Targets {
     $lines = @(
-        "# Recon targets — auto-detected $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')."
+        "# Recon targets, auto-detected $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')."
         "# Format: <type> <value>  [# comment]"
         "# type = internal_cidr | external_ip | external_domain"
         ""
@@ -144,8 +144,8 @@ function Internal-Recon {
         $clean = $cidr -replace '/', '_'
         $LH = Join-Path $Script:OutputDir "recon-internal-livehosts-$clean-$stamp.log"
         Clear-Host
-        $args = (Nmap-DiscoArgs) + @('-oG','-', $cidr)
-        Invoke-Silent -Label "nmap-sn $cidr" -LogFile $LH -FilePath $nmap -ArgumentList $args
+        $nmapArgs = (Nmap-DiscoArgs) + @('-oG','-', $cidr)
+        Invoke-Silent -Label "nmap-sn $cidr" -LogFile $LH -FilePath $nmap -ArgumentList $nmapArgs
         Get-Content $LH -ErrorAction SilentlyContinue |
             Where-Object { $_ -match 'Status: Up' } |
             ForEach-Object { ($_ -split '\s+')[1] } |
@@ -161,8 +161,8 @@ function Internal-Recon {
     $SVC = Join-Path $Script:OutputDir "recon-internal-services-$stamp"
     $desc = if ($Script:Thorough) { 'FULL: -p- + vuln scripts' } else { 'QUICK: top-1000 + default scripts' }
     Clear-Host
-    $args = (Nmap-ServiceArgs) + @('-iL', $liveFile, '-oA', $SVC)
-    Invoke-Silent -Label "nmap $desc x$($live.Count)" -LogFile "$SVC.log" -FilePath $nmap -ArgumentList $args
+    $nmapArgs = (Nmap-ServiceArgs) + @('-iL', $liveFile, '-oA', $SVC)
+    Invoke-Silent -Label "nmap $desc x$($live.Count)" -LogFile "$SVC.log" -FilePath $nmap -ArgumentList $nmapArgs
     Parse-NmapFindings -NmapFile "$SVC.nmap" -Context 'internal'
 
     # SMB enum via NetExec if installed
@@ -246,7 +246,7 @@ function External-Recon {
         Write-Host @"
 [recon] No internet detected.
 
-In an air-gapped exercise, "external" view means scanning your assets from a
+In an air-gapped environment, "external" view means scanning your assets from a
 DIFFERENT VLAN. Add those CIDRs as 'internal_cidr' lines and run INTERNAL.
 
 Skipping Shodan + crt.sh. Doing local-only DNS + nmap.
@@ -291,8 +291,8 @@ Skipping Shodan + crt.sh. Doing local-only DNS + nmap.
             $clean = $ip -replace '\.', '_'
             $NM = Join-Path $Script:OutputDir "recon-external-nmap-$clean-$stamp"
             Clear-Host
-            $args = @('-sV', '--top-ports', '1000', '-T4', '-Pn', '-oA', $NM, $ip)
-            Invoke-Silent -Label "nmap external $ip" -LogFile "$NM.log" -FilePath $nmap -ArgumentList $args
+            $nmapArgs = @('-sV', '--top-ports', '1000', '-T4', '-Pn', '-oA', $NM, $ip)
+            Invoke-Silent -Label "nmap external $ip" -LogFile "$NM.log" -FilePath $nmap -ArgumentList $nmapArgs
             Parse-NmapFindings -NmapFile "$NM.nmap" -Context 'external_via_lan'
         }
     }

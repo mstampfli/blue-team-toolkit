@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Per-host triage — wraps battle plan §I commands.
+# Per-host triage, core live-state collection.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -83,4 +83,4 @@ run "Docker privileged"      bash -c 'command -v docker >/dev/null && docker ps 
 run "package verify"         bash -c 'if command -v debsums >/dev/null; then debsums -c 2>/dev/null | head -100; elif command -v rpm >/dev/null; then rpm -Va 2>/dev/null | head -100; else echo "(no debsums/rpm)"; fi'
 
 log "TRIAGE done -> $OUT"
-info_box "Triage written to:\n$OUT\n\nReview, then copy to evidence share.\n\nFor follow-up hunts, see option 4."
+info_box "Triage written to:\n$OUT\n\nReview, then copy to your evidence store.\n\nFor follow-up hunts, see option 4."

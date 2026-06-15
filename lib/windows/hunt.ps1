@@ -19,14 +19,12 @@ if ($autoruns) {
     $ar = Join-Path $Script:OutputDir ("autoruns-hunt-{0}.csv" -f (Get-Date -Format 'yyyyMMdd-HHmm'))
     Invoke-Silent -Label 'autorunsc' -LogFile $ar -FilePath $autoruns.FullName `
         -ArgumentList @('-nobanner','-accepteula','-a','*','-m','-h','-c')
-    "Autoruns CSV (filter VerifiedSigner blank for unsigned): $ar" | Tee-Object -Append $out
-    # Parse: lines with empty VerifiedSigner column = unsigned persistence
-    Get-Content $ar -ErrorAction SilentlyContinue | Select-Object -Skip 1 | ForEach-Object {
-        $cols = $_ -split ','
-        if ($cols.Count -ge 8 -and ($cols[7] -eq '' -or $cols[7] -match 'Not signed|n/a')) {
-            $entry = ($cols[2..4] -join ' / ')
-            Record-Finding -Type 'autoruns_unsigned_entry' -Target ($entry.Substring(0, [Math]::Min($entry.Length,200))) -Extra @{ confidence = 'maybe' }
-        }
+    "Autoruns CSV (unsigned = Signer not Verified): $ar" | Tee-Object -Append $out
+    # Parse by column name (autorunsc CSV is quoted and comma-containing, so a
+    # positional split misaligns). An entry whose Signer is not Verified is unsigned.
+    Import-Csv $ar -ErrorAction SilentlyContinue | Where-Object { $_.Signer -notmatch 'Verified' } | ForEach-Object {
+        $entry = @($_.'Entry Location', $_.Entry, $_.'Image Path') -join ' / '
+        Record-Finding -Type 'autoruns_unsigned_entry' -Target ($entry.Substring(0, [Math]::Min($entry.Length,200))) -Extra @{ confidence = 'maybe' }
     }
 }
 
@@ -36,8 +34,8 @@ $sigmaRules = Get-ChildItem (Join-Path $Script:ToolsDir 'sigma\rules\windows') -
 if ($chainsaw -and (Confirm-YesNo "Run chainsaw against C:\Windows\System32\winevt\Logs (5-15 min)?")) {
     $cs = Join-Path $Script:OutputDir ("chainsaw-{0}.csv" -f (Get-Date -Format 'yyyyMMdd-HHmm'))
     $sigmaArg = if ($sigmaRules) { @('-s', (Join-Path $Script:ToolsDir 'sigma\rules\windows')) } else { @() }
-    $args = @('hunt', "$env:SystemRoot\System32\winevt\Logs", '--csv', '--output', $cs) + $sigmaArg
-    Invoke-Silent -Label 'chainsaw' -LogFile "$cs.log" -FilePath $chainsaw.FullName -ArgumentList $args
+    $csArgs = @('hunt', "$env:SystemRoot\System32\winevt\Logs", '--csv', '--output', $cs) + $sigmaArg
+    Invoke-Silent -Label 'chainsaw' -LogFile "$cs.log" -FilePath $chainsaw.FullName -ArgumentList $csArgs
     Get-Content $cs -ErrorAction SilentlyContinue | Select-Object -Skip 1 | ForEach-Object {
         $cols = $_ -split ','
         if ($cols.Count -ge 2) {
@@ -54,7 +52,7 @@ if ($hayabusa -and -not $chainsaw -and (Confirm-YesNo 'Run hayabusa csv-timeline
         -ArgumentList @('csv-timeline','-d',"$env:SystemRoot\System32\winevt\Logs",'-o',$hb,'-q')
 }
 
-# hollows_hunter - in-memory injection sweep (Meterpreter signature)
+# hollows_hunter - in-memory / hollowing sweep
 $hh = Get-ChildItem (Join-Path $Script:ToolsDir 'hollows_hunter*.exe') -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($hh) {
     $hho = Join-Path $Script:OutputDir ("hollowshunter-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmm'))
@@ -81,13 +79,13 @@ if ($loki -and (Confirm-YesNo 'Run Loki IOC scan against C:\ (30-60 min)?')) {
 "`n[hunt] dispatch done; running CLEAR backdoor checks..." | Tee-Object -Append $out
 
 # ============================================================
-# CLEAR backdoors — high specificity
+# CLEAR backdoors, high specificity
 # ============================================================
 
-H "[CLEAR] Local accounts created in last 30 days" {
+H "[CLEAR] Local accounts with a recently set/changed password (last 30 days)" {
     try {
         Get-LocalUser | Where-Object { $_.PasswordLastSet -and ([datetime]$_.PasswordLastSet -gt (Get-Date).AddDays(-30)) } | ForEach-Object {
-            $line = "$($_.Name) created/pw-set $($_.PasswordLastSet)"
+            $line = "$($_.Name) pw-set $($_.PasswordLastSet)"
             Write-Output $line
             Record-Finding -Type 'recent_local_account' -Target $_.Name -Extra @{ confidence = 'clear'; pw_last_set = "$($_.PasswordLastSet)" }
         }
@@ -180,35 +178,33 @@ H "[CLEAR] Suspicious listening ports (known malware/C2 defaults)" {
 }
 
 H "[CLEAR] Recent Domain Admins / Enterprise Admins additions" {
-    foreach ($g in 'Domain Admins','Enterprise Admins','Schema Admins') {
-        try {
-            $members = Get-ADGroupMember -Identity $g -Recursive -ErrorAction Stop
-            foreach ($m in $members) {
-                try {
-                    $u = Get-ADUser -Identity $m.SamAccountName -Properties whenChanged -ErrorAction Stop
-                    if ($u.whenChanged -and $u.whenChanged -gt (Get-Date).AddDays(-30)) {
-                        Write-Output "$g <- $($u.SamAccountName) (changed $($u.whenChanged))"
-                        Record-Finding -Type 'recent_privileged_group_change' -Target "$g/$($u.SamAccountName)" -Extra @{ confidence = 'clear' }
-                    }
-                } catch { }
-            }
-        } catch { }
+    if (-not (Get-Command Get-ADGroupMember -ErrorAction SilentlyContinue)) {
+        Write-Output "[skipped: AD module not present]"
+    } else {
+        foreach ($g in 'Domain Admins','Enterprise Admins','Schema Admins') {
+            try {
+                $members = Get-ADGroupMember -Identity $g -Recursive -ErrorAction Stop
+                foreach ($m in $members) {
+                    try {
+                        $u = Get-ADUser -Identity $m.SamAccountName -Properties whenChanged -ErrorAction Stop
+                        if ($u.whenChanged -and $u.whenChanged -gt (Get-Date).AddDays(-30)) {
+                            Write-Output "$g <- $($u.SamAccountName) (changed $($u.whenChanged))"
+                            Record-Finding -Type 'recent_privileged_group_change' -Target "$g/$($u.SamAccountName)" -Extra @{ confidence = 'clear' }
+                        }
+                    } catch { }
+                }
+            } catch { }
+        }
     }
 }
 
-H "[CLEAR] Backup Operators members (CyLG kill-chain step 4)" {
+H "[CLEAR] Backup Operators members (privilege-escalation path)" {
+    # Backup Operators is a builtin LOCAL group; query it locally (no AD module).
     try {
         $mems = Get-LocalGroupMember -Group 'Backup Operators' -ErrorAction SilentlyContinue
         foreach ($m in $mems) {
             Write-Output "Backup Operators <- $($m.Name)"
             Record-Finding -Type 'backup_operators_member' -Target $m.Name -Extra @{ confidence = 'clear' }
-        }
-    } catch { }
-    try {
-        $admems = Get-ADGroupMember -Identity 'Backup Operators' -Recursive -ErrorAction Stop
-        foreach ($m in $admems) {
-            Write-Output "AD Backup Operators <- $($m.SamAccountName)"
-            Record-Finding -Type 'backup_operators_member' -Target $m.SamAccountName -Extra @{ confidence = 'clear'; source = 'AD' }
         }
     } catch { }
 }
@@ -232,9 +228,9 @@ H "[CLEAR] WMI persistence (FilterToConsumerBinding present)" {
     } catch { }
 }
 
-"`n[hunt] CLEAR checks done; running MAYBE / CyLG-specific checks..." | Tee-Object -Append $out
+"`n[hunt] CLEAR checks done; running additional heuristics..." | Tee-Object -Append $out
 
-H "printer.exe / printer.* (CyLG known backdoor)" {
+H "printer.exe / printer.* (known-bad backdoor filename)" {
     Get-ChildItem -Path C:\ -Recurse -Include printer.exe, printer.dll, printer.bat, printer.ps1 -ErrorAction SilentlyContinue 2>$null
 }
 H "services with 'printer' in path (excluding spoolsv.exe)" {
@@ -301,17 +297,25 @@ H "Exchange / IIS web shell paths (recent .aspx/.dll, last 90d)" {
 }
 
 H "local admins" { net localgroup Administrators }
-H "Backup Operators (CyLG kill-chain step 4 priority)" {
+H "Backup Operators (privilege-escalation path)" {
+    # Builtin LOCAL group; query it locally (no AD module).
     try { net localgroup "Backup Operators" } catch { }
-    try { Get-ADGroupMember "Backup Operators" -ErrorAction SilentlyContinue } catch { }
 }
-H "users created in last 30d (local + AD if available)" {
+H "local accounts with recent pw-set + AD accounts created (last 30d)" {
     try { Get-LocalUser | Where-Object { $_.PasswordLastSet -and ([datetime]$_.PasswordLastSet -gt (Get-Date).AddDays(-30)) } } catch { }
-    try { Get-ADUser -Filter * -Properties whenCreated -ErrorAction SilentlyContinue |
-            Where-Object { $_.whenCreated -gt (Get-Date).AddDays(-30) } |
-            Select-Object SamAccountName, whenCreated } catch { }
+    if (-not (Get-Command Get-ADUser -ErrorAction SilentlyContinue)) {
+        "[skipped: AD module not present]"
+    } else {
+        try { Get-ADUser -Filter * -Properties whenCreated -ErrorAction SilentlyContinue |
+                Where-Object { $_.whenCreated -gt (Get-Date).AddDays(-30) } |
+                Select-Object SamAccountName, whenCreated } catch { }
+    }
 }
 H "DCSync rights audit (run on DC, requires AD module)" {
+    if (-not (Get-Command Get-ADRootDSE -ErrorAction SilentlyContinue)) {
+        "[skipped: AD module not present]"
+        return
+    }
     try {
         $rootDSE = (Get-ADRootDSE).defaultNamingContext
         $acl = Get-Acl ("AD:\" + $rootDSE)
@@ -332,14 +336,18 @@ H "Drift vs persistence baseline (if present)" {
     $b2 = Join-Path $Script:OutputDir 'baseline-services.txt'
     $b3 = Join-Path $Script:OutputDir 'baseline-tasks.txt'
 
+    # PS* provider properties (PSPath/PSParentPath/PSProvider/...) are runtime noise
+    # that vary in order/content and caused drift every run. Strip them on both sides
+    # so only genuine Run-key value changes register.
+    $stripPS = { param($lines) $lines | Where-Object { $_ -notmatch '^\s*PS(Path|ParentPath|ChildName|Drive|Provider)\b' } | Sort-Object }
     if (Test-Path $b1) {
         $now = @(
             'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run',
             'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce',
             'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run',
             'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce'
-        ) | ForEach-Object { "--- $_ ---"; Get-ItemProperty $_ -ErrorAction SilentlyContinue } | Out-String
-        $diff = Compare-Object (Get-Content $b1) ($now -split "`n")
+        ) | ForEach-Object { "--- $_ ---"; Get-ItemProperty $_ -ErrorAction SilentlyContinue | Select-Object -Property * -ExcludeProperty PS* } | Out-String
+        $diff = Compare-Object (& $stripPS (Get-Content $b1)) (& $stripPS ($now -split "`n"))
         if ($diff) { "Run-key drift:"; $diff } else { "Run keys: no drift" }
     } else { "(no run-key baseline; create via Hardening menu step 'Snapshot persistence baseline')" }
 
@@ -358,10 +366,10 @@ H "Drift vs persistence baseline (if present)" {
 
 Write-Log "HUNT done -> $out"
 Write-Host "`nHunt written: $out" -ForegroundColor Green
-Write-Host "`nFor any hits (process from §A):" -ForegroundColor Yellow
-Write-Host " 1. DO NOT delete  2. Get-FileHash + copy to evidence"
+Write-Host "`nIf you find a confirmed bad artifact:" -ForegroundColor Yellow
+Write-Host " 1. Do not delete it  2. Get-FileHash + copy to your evidence store"
 Write-Host " 3. Network-isolate the host"
-Write-Host " 4. Find ALL hosts with same hash (Velociraptor)"
-Write-Host " 5. Eradicate fleet-wide simultaneously"
-Write-Host " 6. Patch the entry point   7. Log to #log + report to white cell"
+Write-Host " 4. Find every host with the same hash"
+Write-Host " 5. Remediate them together"
+Write-Host " 6. Close the entry point   7. Document it and notify your IR lead"
 Pause-Toolkit

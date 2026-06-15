@@ -33,7 +33,7 @@ function Invoke-Silent {
         [string[]]$ArgumentList = @()
     )
     Write-Host "[$Label] running -> $LogFile" -ForegroundColor Cyan
-    Write-Host "[$Label] heartbeat every 30s — if size stops growing AND tail is unchanged across two beats, it's stuck"
+    Write-Host "[$Label] heartbeat every 30s, if size stops growing AND tail is unchanged across two beats, it's stuck"
     Write-Host ""
     Write-Log "Running $Label -> $LogFile"
 
@@ -112,7 +112,7 @@ function Ensure-Extracted {
     return $null
 }
 
-# Test-InternetAvailable — used by recon to gracefully degrade air-gapped
+# Test-InternetAvailable, used by recon to gracefully degrade air-gapped
 function Test-InternetAvailable {
     try {
         $r = Invoke-WebRequest -Uri 'https://1.1.1.1' -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
@@ -124,7 +124,7 @@ function Test-InternetAvailable {
     } catch { return $false }
 }
 
-# Convert-IPCidr — given an IP and prefix length, return network/CIDR
+# Convert-IPCidr, given an IP and prefix length, return network/CIDR
 function Convert-IPCidr {
     param([string]$IP, [int]$Prefix)
     $ipBytes   = [System.Net.IPAddress]::Parse($IP).GetAddressBytes()

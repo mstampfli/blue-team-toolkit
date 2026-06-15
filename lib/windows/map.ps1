@@ -176,7 +176,8 @@ if (-not $autoruns) { $autoruns = Get-ChildItem (Join-Path $Script:ToolsDir 'Aut
 if ($autoruns) {
     if (Confirm-YesNo "Run autorunsc.exe -a * -m -h -c (full persistence dump)?") {
         $ar = Join-Path $Script:OutputDir ("autoruns-{0}.csv" -f (Get-Date -Format 'yyyyMMdd-HHmm'))
-        & $autoruns.FullName -nobanner -accepteula -a * -m -h -c | Out-File $ar
+        Invoke-Silent -Label 'autorunsc' -LogFile $ar -FilePath $autoruns.FullName `
+            -ArgumentList @('-nobanner','-accepteula','-a','*','-m','-h','-c')
         Write-Log "autorunsc -> $ar"
         Write-Host "Autoruns CSV: $ar" -ForegroundColor Green
     }

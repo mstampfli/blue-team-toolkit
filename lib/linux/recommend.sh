@@ -19,61 +19,61 @@ has_tool() { jq -r --arg t "$1" '.tools_present | index($t) // empty' "$FACTS"; 
 p0=(); p1=(); p2=(); na=(); ok=(); tools_have=(); tools_miss=()
 
 # ---- P0 / P1 / P2 logic ----
-[[ "$(factn '.security_state.uid0_non_root_count')" -gt 0 ]] && p0+=("UID 0 user(s) other than root present — investigate IMMEDIATELY")
-[[ "$(factn '.security_state.empty_password_users')" -gt 0 ]] && p0+=("Account(s) with EMPTY password in /etc/shadow — set or lock now")
-[[ "$(fact '.security_state.ld_so_preload')" == "present" ]] && p0+=("/etc/ld.so.preload is non-empty — possible LD_PRELOAD rootkit (verify each entry)")
+[[ "$(factn '.security_state.uid0_non_root_count')" -gt 0 ]] && p0+=("UID 0 user(s) other than root present, investigate IMMEDIATELY")
+[[ "$(factn '.security_state.empty_password_users')" -gt 0 ]] && p0+=("Account(s) with EMPTY password in /etc/shadow, set or lock now")
+[[ "$(fact '.security_state.ld_so_preload')" == "present" ]] && p0+=("/etc/ld.so.preload is non-empty, possible LD_PRELOAD rootkit (verify each entry)")
 
 case "$(fact '.security_state.ssh_root_login')" in
-  yes|default) p1+=("SSH PermitRootLogin is permissive — set to 'no' (harden step 1)") ;;
+  yes|default) p1+=("SSH PermitRootLogin is permissive, set to 'no' (harden step 1)") ;;
   no) ok+=("SSH root login disabled") ;;
 esac
 case "$(fact '.security_state.ssh_password_auth')" in
-  yes|default) p1+=("SSH PasswordAuthentication = yes — set to 'no' once keys are deployed (harden step 2)") ;;
+  yes|default) p1+=("SSH PasswordAuthentication = yes, set to 'no' once keys are deployed (harden step 2)") ;;
   no) ok+=("SSH password auth disabled") ;;
 esac
-[[ "$(factb '.security_state.auditd_running')" != "true" ]] && p1+=("auditd not running — install + load Neo23x0 ruleset (harden step 3)") || ok+=("auditd active")
+[[ "$(factb '.security_state.auditd_running')" != "true" ]] && p1+=("auditd not running, install + load Neo23x0 ruleset (harden step 3)") || ok+=("auditd active")
 [[ "$(factb '.security_state.fail2ban_running')" != "true" ]] && p1+=("fail2ban inactive (harden step 4)") || ok+=("fail2ban active")
-[[ "$(fact '.security_state.ufw_state')" != "active" ]] && p1+=("UFW not active — enable default-deny inbound (harden step 5)") || ok+=("UFW active")
-[[ "$(fact '.security_state.pkexec_setuid')" =~ ^[4-7][0-9][0-9][0-9]?$ ]] && p1+=("/usr/bin/pkexec still has setuid — apply PwnKit workaround (harden step 7)")
+[[ "$(fact '.security_state.ufw_state')" != "active" ]] && p1+=("UFW not active, enable default-deny inbound (harden step 5)") || ok+=("UFW active")
+[[ "$(fact '.security_state.pkexec_setuid')" =~ ^[4-7][0-7]{3}$ ]] && p1+=("/usr/bin/pkexec still has setuid, apply PwnKit workaround (harden step 7)")
 
-[[ "$(factb '.security_state.nf_tables_loaded')" == "true" ]] && p2+=("nf_tables loaded — if not in use, blacklist (CVE-2024-1086 risk reduction)")
-[[ "$(factb '.security_state.apparmor_running')" != "true" ]] && p2+=("AppArmor not running — install + enable apparmor profiles")
+[[ "$(factb '.security_state.nf_tables_loaded')" == "true" ]] && p2+=("nf_tables loaded, if not in use, blacklist (CVE-2024-1086 risk reduction)")
+[[ "$(factb '.security_state.apparmor_running')" != "true" ]] && p2+=("AppArmor not running, install + enable apparmor profiles")
 
 # Role-driven priorities
 [[ "$(factb '.role.samba')" == "true" ]] && {
   case "$(fact '.security_state.smb_min_protocol')" in
     SMB2|SMB3) ok+=("Samba min protocol >= SMB2") ;;
-    *) p0+=("Samba running with default min protocol (SMB1 may be allowed) — set 'min protocol = SMB2' in smb.conf") ;;
+    *) p0+=("Samba running with default min protocol (SMB1 may be allowed), set 'min protocol = SMB2' in smb.conf") ;;
   esac
 }
-[[ "$(factb '.role.docker')" == "true" ]] && p2+=("Docker present — review for privileged containers + check for socket exposure (/var/run/docker.sock)")
+[[ "$(factb '.role.docker')" == "true" ]] && p2+=("Docker present, review for privileged containers + check for socket exposure (/var/run/docker.sock)")
 
-# Exposure-driven (from §C of facts)
+# Exposure-driven (from facts.json)
 exposed_count=$(factn '.exposure.ports_bound_all_interfaces')
-[[ "$exposed_count" -gt 0 ]] && p1+=("$exposed_count service(s) bound to 0.0.0.0 — reachable from any network they touch; review with 'ss -tlnp' and bind to specific interface or firewall off")
+[[ "$exposed_count" -gt 0 ]] && p1+=("$exposed_count service(s) bound to 0.0.0.0, reachable from any network they touch; review with 'ss -tlnp' and bind to specific interface or firewall off")
 svc_root=$(factn '.exposure.service_principals_running_as_root')
-[[ "$svc_root" -gt 0 ]] && p1+=("$svc_root long-running service(s) running as root that typically don't need to (nginx/apache/postgres/etc.) — drop to dedicated user")
+[[ "$svc_root" -gt 0 ]] && p1+=("$svc_root long-running service(s) running as root that typically don't need to (nginx/apache/postgres/etc.), drop to dedicated user")
 caps_count=$(factn '.exposure.capability_files_count')
-[[ "$caps_count" -gt 0 ]] && p2+=("$caps_count file(s) with non-standard CAP_* capabilities — audit with: sudo getcap -r /")
+[[ "$caps_count" -gt 0 ]] && p2+=("$caps_count file(s) with non-standard CAP_* capabilities, audit with: sudo getcap -r /")
 ipt_pol=$(fact '.exposure.iptables_input_policy')
-[[ "$ipt_pol" == "ACCEPT" ]] && p0+=("iptables INPUT default policy = ACCEPT (no implicit deny) — set policy DROP and add explicit ACCEPT rules")
+[[ "$ipt_pol" == "ACCEPT" ]] && p0+=("iptables INPUT default policy = ACCEPT (no implicit deny), set policy DROP and add explicit ACCEPT rules")
 ufw_any=$(factn '.exposure.ufw_allow_anywhere_rules')
-[[ "$ufw_any" -gt 0 ]] && p1+=("$ufw_any UFW rule(s) allow from ANYWHERE — review with 'sudo ufw status verbose'")
+[[ "$ufw_any" -gt 0 ]] && p1+=("$ufw_any UFW rule(s) allow from ANYWHERE, review with 'sudo ufw status verbose'")
 docker_exposed=$(factn '.exposure.docker_containers_exposed_to_all')
-[[ "$docker_exposed" -gt 0 ]] && p1+=("$docker_exposed Docker container(s) publishing ports to 0.0.0.0 — bind to 127.0.0.1 unless intended public")
+[[ "$docker_exposed" -gt 0 ]] && p1+=("$docker_exposed Docker container(s) publishing ports to 0.0.0.0, bind to 127.0.0.1 unless intended public")
 [[ "$(factb '.role.nginx')" == "true" || "$(factb '.role.apache')" == "true" ]] && {
-  p1+=("Web server running — run 'nuclei -t cves/' against this host + audit /var/www for webshell patterns")
+  p1+=("Web server running, run 'nuclei -t cves/' against this host + audit /var/www for webshell patterns")
   [[ -z "$(has_tool nuclei)" ]] && tools_miss+=("nuclei (template-based CVE scan against your web server)")
 }
-[[ "$(factb '.role.postgres')" == "true" || "$(factb '.role.mysql_or_mariadb')" == "true" ]] && p2+=("DB server present — check for default creds, listening interfaces, replication user perms")
-[[ "$(factb '.role.bind')" == "true" ]] && p2+=("BIND DNS running — ensure recursion is restricted; disable zone transfers to unknown peers")
-[[ "$(factb '.role.ad_realm_joined')" == "true" ]] && p1+=("Host AD-joined — ensure SSSD config + krb5.keytab perms locked down; add to BloodHound scope")
+[[ "$(factb '.role.postgres')" == "true" || "$(factb '.role.mysql_or_mariadb')" == "true" ]] && p2+=("DB server present, check for default creds, listening interfaces, replication user perms")
+[[ "$(factb '.role.bind')" == "true" ]] && p2+=("BIND DNS running, ensure recursion is restricted; disable zone transfers to unknown peers")
+[[ "$(factb '.role.ad_realm_joined')" == "true" ]] && p1+=("Host AD-joined, ensure SSSD config + krb5.keytab perms locked down; add to BloodHound scope")
 
-# Listening ports — flag risky exposures
+# Listening ports, flag risky exposures
 RISKY_PORTS=$(jq -r '.listening_ports[] | select(. as $p | [21,23,135,139,445,3306,5432,5984,6379,9200,11211,27017] | index($p))' "$FACTS")
 if [[ -n "$RISKY_PORTS" ]]; then
   ports_csv=$(echo "$RISKY_PORTS" | tr '\n' ',' | sed 's/,$//')
-  p1+=("Risky ports listening: $ports_csv — confirm bound only to internal interfaces, segment from workstations")
+  p1+=("Risky ports listening: $ports_csv, confirm bound only to internal interfaces, segment from workstations")
 fi
 
 # ---- Lynis findings (if a report.dat exists) ----
@@ -129,7 +129,7 @@ done
 # ---- Render ----
 {
   echo "============================================================"
-  echo " HARDENING PUNCH LIST — $(fact .host)"
+  echo " HARDENING PUNCH LIST, $(fact .host)"
   echo " Generated: $(date)"
   echo "============================================================"
   echo
@@ -140,17 +140,17 @@ done
   echo
 
   if (( ${#p0[@]} )); then
-    echo "*** P0 — DO NOW *********************************************"
+    echo "*** P0, DO NOW *********************************************"
     printf '  [!] %s\n' "${p0[@]}"
     echo
   fi
   if (( ${#p1[@]} )); then
-    echo "*** P1 — Before attack starts ******************************"
+    echo "*** P1, Before exposure ******************************"
     printf '  [ ] %s\n' "${p1[@]}"
     echo
   fi
   if (( ${#p2[@]} )); then
-    echo "*** P2 — If time allows ************************************"
+    echo "*** P2, If time allows ************************************"
     printf '  [ ] %s\n' "${p2[@]}"
     echo
   fi
@@ -185,7 +185,7 @@ done
       echo "  95%/99% confidence findings (P1):"
       printf '    [ ] %s\n' "${linpeas_99[@]}"
     fi
-    (( ${#linpeas_critical[@]} + ${#linpeas_99[@]} == 0 )) && echo "  (no high-confidence findings — review $LINPEAS_FILE manually)"
+    (( ${#linpeas_critical[@]} + ${#linpeas_99[@]} == 0 )) && echo "  (no high-confidence findings, review $LINPEAS_FILE manually)"
     echo
   fi
 
@@ -193,7 +193,7 @@ done
   if (( ${#tools_have[@]} )); then printf '  ✔ %s\n' "${tools_have[@]}"; else echo '  (none of the critical set installed)'; fi
   echo
   echo "TOOLS MISSING (recommend installing via option 1):"
-  if (( ${#tools_miss[@]} )); then printf '  ✗ %s\n' "${tools_miss[@]}"; else echo '  (all critical tools present — nice)'; fi
+  if (( ${#tools_miss[@]} )); then printf '  ✗ %s\n' "${tools_miss[@]}"; else echo '  (all critical tools present, nice)'; fi
   echo
   echo "Listening (top): $(jq -c '.listening_ports' "$FACTS")"
   echo

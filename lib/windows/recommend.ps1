@@ -22,51 +22,51 @@ $ss   = $facts.security_state
 $role = $facts.role
 
 # ---- P0 ----
-if ($ss.smb1_state -eq 'Enabled') { $p0.Add("SMBv1 ENABLED — disable immediately (EternalBlue family) [harden step 2]") } else { $ok.Add("SMBv1 disabled") }
-if ($role.is_dc -and $role.print_spooler) { $p0.Add("This is a DC AND Print Spooler is RUNNING — PrintNightmare risk, stop+disable Spooler [harden step 5]") }
-if ($ss.lsa_protection_runasppl -ne 1) { $p0.Add("LSA Protection (RunAsPPL) NOT set — Mimikatz can read LSASS [harden step 1]") } else { $ok.Add("LSA Protection on") }
+if ($ss.smb1_state -eq 'Enabled') { $p0.Add("SMBv1 ENABLED, disable immediately (EternalBlue family) [harden step 2]") } else { $ok.Add("SMBv1 disabled") }
+if ($role.is_dc -and $role.print_spooler) { $p0.Add("This is a DC AND Print Spooler is RUNNING, PrintNightmare risk, stop+disable Spooler [harden step 5]") }
+if ($ss.lsa_protection_runasppl -ne 1) { $p0.Add("LSA Protection (RunAsPPL) NOT set, Mimikatz can read LSASS [harden step 1]") } else { $ok.Add("LSA Protection on") }
 if ($ss.defender_realtime -eq $false) { $p0.Add("Windows Defender real-time monitoring is OFF") } else { $ok.Add("Defender real-time on") }
 
 # ---- P1 ----
-if ($ss.smb_signing_required -ne $true) { $p1.Add("SMB signing not required (server) — enable to defeat NTLM relay [harden step 3]") } else { $ok.Add("SMB signing required") }
-if ($ss.smb3_compression_disabled -ne 1) { $p1.Add("SMBv3 compression NOT disabled — SMBGhost (CVE-2020-0796) workaround missing [harden step 4]") }
-if ($ss.llmnr_disabled -ne $true) { $p1.Add("LLMNR is enabled — disable via DNSClient policy [harden step 6]") } else { $ok.Add("LLMNR disabled") }
-if ($ss.wpad_running)    { $p1.Add("WPAD service (WinHttpAutoProxySvc) is running — stop+disable [harden step 8]") }
-if ($ss.lm_compat_level -ne 5) { $p1.Add("LmCompatibilityLevel != 5 — enforce NTLMv2-only [harden step 9]") } else { $ok.Add("NTLMv2-only enforced") }
-if ($ss.ps_scriptblock_logging -ne $true) { $p1.Add("PowerShell ScriptBlockLogging OFF — enable [harden step 10]") } else { $ok.Add("PS ScriptBlock logging on") }
-if ($ss.ps_module_logging -ne $true)      { $p1.Add("PowerShell ModuleLogging OFF — enable [harden step 11]") }
+if ($ss.smb_signing_required -ne $true) { $p1.Add("SMB signing not required (server), enable to defeat NTLM relay [harden step 3]") } else { $ok.Add("SMB signing required") }
+if ($ss.smb3_compression_disabled -ne 1) { $p1.Add("SMBv3 compression NOT disabled, SMBGhost (CVE-2020-0796) workaround missing [harden step 4]") }
+if ($ss.llmnr_disabled -ne $true) { $p1.Add("LLMNR is enabled, disable via DNSClient policy [harden step 6]") } else { $ok.Add("LLMNR disabled") }
+if ($ss.wpad_running)    { $p1.Add("WPAD service (WinHttpAutoProxySvc) is running, stop+disable [harden step 8]") }
+if ($ss.lm_compat_level -ne 5) { $p1.Add("LmCompatibilityLevel != 5, enforce NTLMv2-only [harden step 9]") } else { $ok.Add("NTLMv2-only enforced") }
+if ($ss.ps_scriptblock_logging -ne $true) { $p1.Add("PowerShell ScriptBlockLogging OFF, enable [harden step 10]") } else { $ok.Add("PS ScriptBlock logging on") }
+if ($ss.ps_module_logging -ne $true)      { $p1.Add("PowerShell ModuleLogging OFF, enable [harden step 11]") }
 if ($ss.sysmon_running -ne $true) {
-    $p1.Add("Sysmon NOT running — install via option 1, then deploy SwiftOnSecurity config")
+    $p1.Add("Sysmon NOT running, install via option 1, then deploy SwiftOnSecurity config")
 } else { $ok.Add("Sysmon running") }
 if ($ss.credential_guard_running -ne $true -and $facts.os.product -match 'Windows (10|11|Server (2019|2022|2025))') {
-    $p1.Add("Credential Guard not running on a supported OS — enable via VBS")
+    $p1.Add("Credential Guard not running on a supported OS, enable via VBS")
 }
 
 # ---- P2 ----
-if (-not $facts.baselines.runkeys)  { $p2.Add("No persistence baseline (run keys) — capture via Hardening 'Snapshot persistence baseline' step") }
+if (-not $facts.baselines.runkeys)  { $p2.Add("No persistence baseline (run keys), capture via Hardening 'Snapshot persistence baseline' step") }
 if (-not $facts.baselines.services) { $p2.Add("No services baseline") }
 
 # ---- Role-driven ----
 if ($role.exchange) {
-    $p0.Add("Exchange detected — patch ProxyShell/ProxyNotShell, hunt webshells in OWA/auth and ECP/auth")
+    $p0.Add("Exchange detected, patch ProxyShell/ProxyNotShell, hunt webshells in OWA/auth and ECP/auth")
     if ($facts.tools_present -notcontains 'nuclei') { $tools_miss += 'nuclei (run against OWA URL)' }
 }
 if ($role.iis_running) {
-    $p1.Add("IIS running — sweep wwwroot for recent .aspx/.dll, install request filtering rules for known attack URIs")
+    $p1.Add("IIS running, sweep wwwroot for recent .aspx/.dll, install request filtering rules for known attack URIs")
 }
 if ($role.adcs) {
-    $p1.Add("AD CS detected — audit cert templates with Certify.exe (CVE-2022-26923 / ESC1-8 paths)")
+    $p1.Add("AD CS detected, audit cert templates with Certify.exe (CVE-2022-26923 / ESC1-8 paths)")
 }
 if ($role.is_dc) {
     if ($facts.tools_present -notcontains 'sharphound') { $tools_miss += 'SharpHound (collect for BloodHound)' }
-    $p0.Add("This is a DC — confirm krbtgt has been reset 2x with 1h+ gap (CyLG kill chain step 6 mitigation)")
-    $p1.Add("DC — empty Backup Operators group, audit DCSync rights via BloodHound")
+    $p0.Add("This is a DC, confirm krbtgt has been reset 2x with 1h+ gap (domain-controller compromise mitigation)")
+    $p1.Add("DC, empty Backup Operators group, audit DCSync rights via BloodHound")
 }
 if ($role.rdp_listening) {
-    $p2.Add("RDP listening (3389) — restrict via firewall to mgmt VLAN, enable NLA, consider port change")
+    $p2.Add("RDP listening (3389), restrict via firewall to mgmt VLAN, enable NLA, consider port change")
 }
 if ($role.winrm_listening) {
-    $p2.Add("WinRM listening (5985/5986) — confirm scoped via TrustedHosts + IP allowlist")
+    $p2.Add("WinRM listening (5985/5986), confirm scoped via TrustedHosts + IP allowlist")
 }
 
 # ---- Tools availability ----
@@ -96,7 +96,7 @@ if ($exp) {
 $risky = @(21,23,135,139,445,1433,1434,3306,5432,5985,5986,9200,11211,27017)
 $exposed = $facts.listening_ports | Where-Object { $_ -in $risky }
 if ($exposed) {
-    $p1.Add("Risky port(s) listening: $($exposed -join ',') — confirm bound to internal interfaces, segmented from workstations")
+    $p1.Add("Risky port(s) listening: $($exposed -join ','), confirm bound to internal interfaces, segmented from workstations")
 }
 
 # ---- Render ----
@@ -123,7 +123,7 @@ if ($p0.Count) {
     $lines += ""
 }
 if ($p1.Count) {
-    $lines += "*** P1 -- Before attack starts *********************************"
+    $lines += "*** P1 -- Before exposure *********************************"
     $p1 | ForEach-Object { $lines += "  [ ] $_" }
     $lines += ""
 }

@@ -69,7 +69,7 @@ Section "WMI persistence" {
     Get-WmiObject -Namespace root\subscription -Class __EventConsumer         -ErrorAction SilentlyContinue
 }
 Section "local admins" { net localgroup Administrators }
-Section "printer.exe hunt (CyLG known backdoor)" {
+Section "printer.exe hunt (known-bad backdoor filename)" {
     Get-ChildItem -Path C:\ -Recurse -Include printer.exe, printer.dll, printer.bat, printer.ps1 -ErrorAction SilentlyContinue 2>$null
     Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*printer*" -and $_.PathName -notlike "*spoolsv*" }
     Get-ScheduledTask | Where-Object { $_.Actions.Execute -like "*printer*" }

@@ -8,7 +8,7 @@ $tools = (Get-Content $Manifest -Raw | ConvertFrom-Json).tools | Where-Object { 
 
 # Top-level mode: ALL (default) / CUSTOM / QUIT
 Write-Host "Install mode:" -ForegroundColor Cyan
-Write-Host "  1) ALL     -- install every Windows tool from manifest (recommended Day 1)"
+Write-Host "  1) ALL     -- install every Windows tool from manifest (recommended on first run)"
 Write-Host "  2) CUSTOM  -- pick from list (* = high priority)"
 Write-Host "  3) QUIT"
 $mode = Read-Host "Pick [1]"

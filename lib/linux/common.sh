@@ -44,7 +44,7 @@ ensure_extracted() {
 run_silent() {
   local label="$1" logfile="$2"; shift 2
   echo "[$label] running -> $logfile"
-  echo "[$label] heartbeat every 30s — if log size stops growing AND tail line is unchanged across two beats, it's stuck"
+  echo "[$label] heartbeat every 30s, if log size stops growing AND tail line is unchanged across two beats, it's stuck"
   echo
   log "Running $label -> $logfile"
   local t0=$SECONDS

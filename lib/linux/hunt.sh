@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backdoor hunt — focused on §M checklist + §A planted-backdoor IOCs.
+# Backdoor hunt, high-signal persistence checks plus known-bad IOCs.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -14,7 +14,8 @@ R() { eval "$1" 2>&1 | tee -a "$OUT"; }
 # --- Tool dispatch (uses run_silent heartbeat from common.sh) ---
 H "Tool dispatch"
 
-LOKI_PY=$(find "$TOOLS_DIR" -maxdepth 3 -type f -iname 'loki.py' 2>/dev/null | head -1)
+# Loki ships as a zip from the installer; extract it the same way as nuclei.
+LOKI_PY=$(ensure_extracted "loki*.zip" "loki.py")
 if [[ -n "$LOKI_PY" ]] && confirm_box "Run Loki IOC scan (10-30 min, scans /)?"; then
   LK="$OUTPUT_DIR/loki-$(date +%F-%H%M).log"
   run_silent "loki" "$LK" sudo python3 "$LOKI_PY" -p / --noprocscan
@@ -78,9 +79,11 @@ echo | tee -a "$OUT"
 echo "[hunt] tool dispatch done; running CLEAR backdoor checks..." | tee -a "$OUT"
 
 # ============================================================
-# CLEAR backdoors — high specificity, low false-positive rate
+# [CLEAR] backdoors, high specificity, low false-positive rate
+# [REVIEW] exposure/posture checks that are commonly normal on a
+#          healthy host and need a human to decide if intended
 # ============================================================
-H "[CLEAR] /etc/passwd — UID 0 user that isn't root"
+H "[CLEAR] /etc/passwd, UID 0 user that isn't root"
 while IFS=: read -r u _ uid _; do
   [[ "$uid" == "0" && "$u" != "root" ]] && {
     echo "  $u (UID 0)" | tee -a "$OUT"
@@ -133,11 +136,11 @@ if [[ -s /etc/ld.so.preload ]]; then
     record_finding "ld_so_preload_entry" "$entry" "" '{"confidence":"clear"}'
   done < /etc/ld.so.preload
 else
-  echo "  (empty — good)" | tee -a "$OUT"
+  echo "  (empty, good)" | tee -a "$OUT"
 fi
 
-H "[CLEAR] processes running deleted binary AND with established outbound (Meterpreter signature)"
-for pid in $(ls /proc/*/exe 2>/dev/null | xargs -I{} sh -c 'readlink "{}" | grep -q deleted && echo "{}"' 2>/dev/null | grep -oE '/proc/[0-9]+/' | tr -d '/proc/'); do
+H "[CLEAR] processes running deleted binary AND with established outbound (in-memory / deleted-on-disk executable)"
+for pid in $(ls /proc/*/exe 2>/dev/null | xargs -I{} sh -c 'readlink "{}" | grep -q deleted && echo "{}"' 2>/dev/null | grep -oE '/proc/[0-9]+/' | grep -oE '[0-9]+'); do
   has_net=$(ss -tnp state established 2>/dev/null | grep -c "pid=$pid,")
   [[ "$has_net" -gt 0 ]] && {
     cmd=$(tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null | head -c 200)
@@ -168,7 +171,7 @@ ss -tlnp 2>/dev/null | awk '{print $4, $NF}' | grep -E ":($SUS_PORTS)( |$)" | wh
   record_finding "suspicious_listen_port" "$(echo "$line" | head -c 200)" "" '{"confidence":"clear"}'
 done
 
-H "[CLEAR] services running as root that typically shouldn't"
+H "[REVIEW] services running as root that typically shouldn't"
 ps -eo user,pid,comm --no-headers 2>/dev/null | awk '$1=="root"' | \
   awk '$3 ~ /^(nginx|apache2|httpd|mysqld|mariadbd|postgres|redis-server|mongod|node|php-fpm|tomcat|java)$/ {print}' | \
   while IFS= read -r line; do
@@ -186,7 +189,7 @@ sudo getcap -r / 2>/dev/null | \
     record_finding "non_standard_capability" "$line" "$sha" '{"confidence":"maybe"}'
   done
 
-H "[CLEAR] iptables default policies + ACCEPT-from-anywhere rules"
+H "[REVIEW] iptables default policies + ACCEPT-from-anywhere rules"
 {
   echo "--- INPUT chain (top) ---"; sudo iptables -L INPUT -n -v 2>/dev/null | head -3
   echo "--- FORWARD chain (top) ---"; sudo iptables -L FORWARD -n -v 2>/dev/null | head -3
@@ -201,14 +204,14 @@ sudo iptables -L INPUT -n 2>/dev/null | grep -E 'ACCEPT.*0\.0\.0\.0/0' | grep -v
     record_finding "iptables_accept_from_anywhere" "$(echo "$line" | head -c 200)" "" '{"confidence":"maybe"}'
   done
 
-H "[CLEAR] UFW rules allowing from anywhere"
+H "[REVIEW] UFW rules allowing from anywhere"
 sudo ufw status verbose 2>/dev/null | grep -E 'ALLOW IN.*Anywhere' | \
   while IFS= read -r line; do
     echo "  $line" | tee -a "$OUT"
     record_finding "ufw_allow_from_anywhere" "$(echo "$line" | head -c 200)" "" '{"confidence":"maybe"}'
   done
 
-H "[CLEAR] Docker containers publishing to 0.0.0.0 (exposed to all interfaces)"
+H "[REVIEW] Docker containers publishing to 0.0.0.0 (exposed to all interfaces)"
 if command -v docker >/dev/null 2>&1; then
   docker ps --format '{{.Names}}\t{{.Image}}\t{{.Ports}}' 2>/dev/null | grep -E '0\.0\.0\.0:|::' | \
     while IFS= read -r line; do
@@ -217,7 +220,7 @@ if command -v docker >/dev/null 2>&1; then
     done
 fi
 
-H "[CLEAR] services bound to 0.0.0.0 (potentially network-reachable)"
+H "[REVIEW] services bound to 0.0.0.0 (potentially network-reachable)"
 ss -tlnp 2>/dev/null | awk 'NR>1 && ($4 ~ /^0\.0\.0\.0:/ || $4 ~ /^\[::\]:/) {print}' | \
   while IFS= read -r line; do
     echo "  $line" | tee -a "$OUT"
@@ -231,10 +234,30 @@ for m in $(find /tmp /var/tmp /dev/shm /opt /home -name 'pam_*.so' 2>/dev/null);
   record_finding "pam_module_outside_standard_path" "$m" "$sha" '{"confidence":"clear"}'
 done
 
-echo | tee -a "$OUT"
-echo "[hunt] CLEAR checks done; running MAYBE-backdoor / CyLG-specific checks..." | tee -a "$OUT"
+H "[CLEAR] PAM modules in standard */security/ paths integrity-verified (higher-value backdoor location)"
+# The standard */security/ directory is where a real PAM backdoor lives, so
+# verify those modules against package checksums rather than only scanning tmp.
+if command -v debsums >/dev/null 2>&1; then
+  for secdir in /lib/security /lib64/security /usr/lib/security \
+                /lib/x86_64-linux-gnu/security /usr/lib/x86_64-linux-gnu/security; do
+    [[ -d "$secdir" ]] || continue
+    for m in "$secdir"/pam_*.so; do
+      [[ -e "$m" ]] || continue
+      if ! debsums -s "$m" >/dev/null 2>&1; then
+        sha=$(sha256sum "$m" 2>/dev/null | awk '{print $1}')
+        echo "  MODIFIED (debsums mismatch): $m" | tee -a "$OUT"
+        record_finding "pam_module_modified_standard_path" "$m" "$sha" '{"confidence":"clear"}'
+      fi
+    done
+  done
+else
+  echo "  (debsums not installed; verify standard */security/ pam_*.so manually, that is the higher-value backdoor location)" | tee -a "$OUT"
+fi
 
-H "[CLEAR] printer.exe / printer.* hunt (CyLG known backdoor)"
+echo | tee -a "$OUT"
+echo "[hunt] CLEAR checks done; running additional backdoor heuristics..." | tee -a "$OUT"
+
+H "[CLEAR] printer.exe / printer.* hunt (known-bad backdoor filename)"
 while IFS= read -r p; do
   [[ -z "$p" ]] && continue
   echo "$p" | tee -a "$OUT"
@@ -256,27 +279,8 @@ done < <(grep -rEl 'eval *\(|system *\(|passthru *\(|base64_decode *\(|shell_exe
 H "Recently modified system binaries (last 7 days)"
 R "find /etc /usr/bin /usr/sbin /usr/local /lib /lib64 -mtime -7 -type f 2>/dev/null"
 
-H "Deleted-binary processes (Meterpreter / in-memory loaders)"
-while IFS= read -r line; do
-  [[ -z "$line" ]] && continue
-  echo "$line" | tee -a "$OUT"
-  pid=$(echo "$line" | grep -oE '/proc/[0-9]+/exe' | head -1)
-  record_finding "deleted_binary_process" "$pid" "" "{\"raw\":\"$(echo "$line" | sed 's/"/\\"/g' | head -c 150)\"}"
-done < <(ls -la /proc/*/exe 2>/dev/null | grep deleted)
-
-H "ld.so.preload (LD_PRELOAD rootkit)"
-if [[ -s /etc/ld.so.preload ]]; then
-  cat /etc/ld.so.preload | tee -a "$OUT"
-  while IFS= read -r entry; do
-    record_finding "ld_so_preload_entry" "$entry"
-  done < /etc/ld.so.preload
-else
-  echo "(empty)" | tee -a "$OUT"
-fi
-
-H "PAM modules in non-standard locations"
-R "find /lib/security /lib64/security /usr/lib/security 2>/dev/null -type f"
-R "ls -la /etc/pam.d/"
+# (deleted-binary processes, ld.so.preload and PAM-path checks are covered by
+#  the [CLEAR] section above; not repeated here to avoid doubled output.)
 
 H "SUID binaries not on common baseline"
 R "common='/usr/bin/sudo|/usr/bin/passwd|/usr/bin/chsh|/usr/bin/gpasswd|/usr/bin/newgrp|/usr/bin/su|/usr/bin/mount|/usr/bin/umount|/usr/bin/chfn|/usr/bin/pkexec|/usr/lib/openssh/ssh-keysign|/usr/lib/dbus-1.0/dbus-daemon-launch-helper|/usr/lib/policykit-1/polkit-agent-helper-1|/usr/lib/snapd/snap-confine|/usr/bin/fusermount3|/usr/bin/fusermount|/usr/bin/at|/usr/bin/crontab|/usr/sbin/pppd|/usr/lib/eject/dmcrypt-get-device'; find / -perm -4000 -type f 2>/dev/null | grep -vE \"\$common\""
@@ -285,8 +289,7 @@ H "Hidden / executable files in tmp dirs"
 R "find /tmp /var/tmp /dev/shm -type f -executable 2>/dev/null"
 R "find /tmp /var/tmp /dev/shm -name '.*' 2>/dev/null"
 
-H "Cron jobs (all users) + cron drop dirs"
-R 'for u in $(cut -d: -f1 /etc/passwd); do out=$(crontab -u "$u" -l 2>/dev/null); [ -n "$out" ] && echo "--- $u ---" && echo "$out"; done'
+H "Cron drop dirs (listing; reverse-shell pattern match is in the [CLEAR] section above)"
 R "ls -la /etc/cron.d/ /etc/cron.daily/ /etc/cron.hourly/ /etc/cron.weekly/ /etc/cron.monthly/ 2>/dev/null"
 
 H "SSH authorized_keys (verify each)"
@@ -295,9 +298,8 @@ R 'for f in $(find /root/.ssh /home/*/.ssh -name authorized_keys 2>/dev/null); d
 H "sshd_config: ForceCommand / Match blocks / AuthorizedKeysFile overrides"
 R "grep -E '^(Match|ForceCommand|AuthorizedKeysFile|AuthorizedKeysCommand)' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null"
 
-H "/etc/passwd & /etc/shadow anomalies (UID 0 not root, empty pw)"
-R 'awk -F: "\$3==0 {print}" /etc/passwd'
-R 'awk -F: "\$2==\"\" {print \$1\" (empty pw)\"}" /etc/shadow 2>/dev/null'
+# (/etc/passwd & /etc/shadow UID0 / empty-password anomalies are covered by the
+#  [CLEAR] section above; not repeated here to avoid double-recording findings.)
 
 H "Sysv init / rc.local / profile drops"
 R "ls -la /etc/init.d/ 2>/dev/null"
@@ -305,10 +307,10 @@ R "cat /etc/rc.local 2>/dev/null"
 R "ls -la /etc/profile.d/ 2>/dev/null"
 
 H "Modified packages (debsums / rpm -Va)"
-R "if command -v debsums >/dev/null; then debsums -c 2>/dev/null; elif command -v rpm >/dev/null; then rpm -Va 2>/dev/null; else echo '(neither installed — sudo apt install debsums)'; fi"
+R "if command -v debsums >/dev/null; then debsums -c 2>/dev/null; elif command -v rpm >/dev/null; then rpm -Va 2>/dev/null; else echo '(neither installed, sudo apt install debsums)'; fi"
 
-H "Listening sockets"
-R "ss -tulpan 2>/dev/null || netstat -tulpan"
+# (Full listening-socket dump removed: suspicious ports and 0.0.0.0 binds are
+#  already covered by the [CLEAR]/[REVIEW] section above.)
 
 H "Established outbound connections"
 R "ss -tan state established 2>/dev/null"
@@ -338,4 +340,4 @@ for kind in suid modules listening services pkgs; do
 done
 
 log "HUNT done -> $OUT"
-info_box "Hunt complete:\n$OUT\n\nFor any hits — process from §A:\n1. DO NOT delete\n2. sha256sum + copy to evidence share\n3. Network-isolate the host\n4. Find ALL hosts with same hash\n5. Eradicate fleet-wide simultaneously\n6. Patch the entry point\n7. Log to #log + report to white cell"
+info_box "Hunt complete:\n$OUT\n\nIf you find a confirmed bad artifact:\n1. Do not delete it\n2. sha256sum it and copy to your evidence store\n3. Network-isolate the host\n4. Find every host with the same hash\n5. Remediate them together\n6. Close the entry point (patch / rotate creds)\n7. Document it in your IR tracker and notify your IR lead"

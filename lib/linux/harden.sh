@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hardening checklist — semi-auto with dry-run by default.
+# Hardening checklist, semi-auto with dry-run by default.
 # Each step shows current state, the apply command, and a rollback hint.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 mode=$(whiptail --title "Hardening mode" --menu "How to apply changes?" 15 78 4 \
-  "DRY"  "Dry-run (print only — recommended first pass)" \
+  "DRY"  "Dry-run (print only, recommended first pass)" \
   "ASK"  "Apply with per-step confirmation (semi-auto)" \
   "QUIT" "Back to menu" \
   3>&1 1>&2 2>&3) || exit 0
@@ -19,11 +19,84 @@ case "$mode" in
 esac
 log "HARDEN start (mode=$mode)"
 
+# --- apply helpers --------------------------------------------------------
+# Timestamped backup so the "restore from backup" rollback hints are true.
+backup_file() {
+  local f="$1"
+  [[ -f "$f" ]] && sudo cp -a "$f" "$f.bak.$(date +%s)"
+}
+
+# set_directive <file> <active-line-regex> <correct-line>
+# Backs up the file, rewrites an existing active directive if present, otherwise
+# appends the correct line (so an absent directive is actually fixed).
+set_directive() {
+  local file="$1" regex="$2" line="$3"
+  [[ -f "$file" ]] || { echo "$file not present, creating it"; sudo touch "$file"; }
+  backup_file "$file"
+  if sudo grep -qE "$regex" "$file" 2>/dev/null; then
+    sudo sed -i -E "s|$regex.*|$line|" "$file"
+  else
+    echo "$line" | sudo tee -a "$file" > /dev/null
+  fi
+}
+
+harden_ssh_root_login() {
+  set_directive /etc/ssh/sshd_config '^[[:space:]]*#*[[:space:]]*PermitRootLogin' 'PermitRootLogin no'
+  echo "NOTE: a file in /etc/ssh/sshd_config.d/*.conf can override the main config; check there too."
+  sudo systemctl reload ssh
+}
+
+harden_ssh_password_auth() {
+  # Guard against remote lockout: require a working key to exist first.
+  local key_count=0 f
+  for f in /root/.ssh/authorized_keys /home/*/.ssh/authorized_keys; do
+    [[ -f "$f" ]] && key_count=$((key_count + $(grep -cvE '^\s*(#|$)' "$f" 2>/dev/null || echo 0)))
+  done
+  echo "Found $key_count authorized_keys line(s) across root + real users."
+  echo "WARNING: disabling password auth with no working key can lock you out of remote SSH."
+  read -rp "Type APPLY to disable PasswordAuthentication: " ans
+  if [[ "$ans" != "APPLY" ]]; then
+    echo "Skipped (confirmation not given)."
+    return 0
+  fi
+  set_directive /etc/ssh/sshd_config '^[[:space:]]*#*[[:space:]]*PasswordAuthentication' 'PasswordAuthentication no'
+  echo "NOTE: a file in /etc/ssh/sshd_config.d/*.conf can override the main config; check there too."
+  sudo systemctl reload ssh
+}
+
+harden_llmnr() {
+  set_directive /etc/systemd/resolved.conf '^[[:space:]]*#*[[:space:]]*LLMNR=' 'LLMNR=no'
+  sudo systemctl restart systemd-resolved
+}
+
+# require_destructive_confirm <one-line description>
+# Extra gate for functionality-removing steps. Returns non-zero if not confirmed.
+require_destructive_confirm() {
+  echo "FUNCTIONALITY-REMOVING: $1"
+  echo "This is NOT a benign workaround; it can break working functionality on this host."
+  local ans
+  read -rp "Type REMOVE to proceed: " ans
+  [[ "$ans" == "REMOVE" ]] || { echo "Skipped (confirmation not given)."; return 1; }
+  return 0
+}
+
+harden_remove_pkexec_setuid() {
+  require_destructive_confirm "drops the setuid bit on /usr/bin/pkexec, which can break polkit privilege escalation (graphical auth prompts, some admin actions)." || return 0
+  sudo chmod 0755 /usr/bin/pkexec
+}
+
+harden_disable_nf_tables() {
+  require_destructive_confirm "unloads and blacklists nf_tables, which can DROP your active firewall (nftables/ufw backends use it)." || return 0
+  sudo modprobe -r nf_tables 2>/dev/null
+  echo 'blacklist nf_tables' | sudo tee /etc/modprobe.d/blacklist-nf_tables.conf > /dev/null
+}
+# --------------------------------------------------------------------------
+
 # Format: label|check|apply|rollback
 ITEMS=(
-"SSH: disable root login|grep -E '^[[:space:]]*PermitRootLogin' /etc/ssh/sshd_config 2>/dev/null || echo '(default = permitted)'|sudo sed -i 's/^#*[[:space:]]*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config && sudo systemctl reload ssh|Restore /etc/ssh/sshd_config from backup, reload ssh"
+"SSH: disable root login (note: sshd_config.d/*.conf can override main file)|grep -E '^[[:space:]]*PermitRootLogin' /etc/ssh/sshd_config 2>/dev/null || echo '(default = permitted)'|harden_ssh_root_login|Restore /etc/ssh/sshd_config from the .bak.* backup, reload ssh"
 
-"SSH: disable password auth (key-only)|grep -E '^[[:space:]]*PasswordAuthentication' /etc/ssh/sshd_config 2>/dev/null || echo '(default = yes)'|sudo sed -i 's/^#*[[:space:]]*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && sudo systemctl reload ssh|sed back to yes, reload ssh"
+"SSH: disable password auth (key-only; guarded against lockout; sshd_config.d/*.conf can override)|grep -E '^[[:space:]]*PasswordAuthentication' /etc/ssh/sshd_config 2>/dev/null || echo '(default = yes)'|harden_ssh_password_auth|Restore /etc/ssh/sshd_config from the .bak.* backup, reload ssh"
 
 "auditd installed + Neo23x0 ruleset|systemctl is-active auditd 2>/dev/null || echo 'inactive'|sudo apt-get install -y auditd && sudo curl -fsSL https://raw.githubusercontent.com/Neo23x0/auditd/master/audit.rules -o /etc/audit/rules.d/audit.rules && sudo augenrules --load && sudo systemctl enable --now auditd|sudo rm /etc/audit/rules.d/audit.rules and reload"
 
@@ -31,17 +104,17 @@ ITEMS=(
 
 "UFW: default-deny inbound, allow ssh|sudo ufw status verbose 2>/dev/null | head -5|sudo ufw --force enable && sudo ufw default deny incoming && sudo ufw default allow outgoing && sudo ufw allow ssh|sudo ufw disable"
 
-"Disable LLMNR (systemd-resolved)|grep -E '^[[:space:]]*LLMNR' /etc/systemd/resolved.conf 2>/dev/null || echo '(default = yes)'|sudo sed -i 's/^#*[[:space:]]*LLMNR=.*/LLMNR=no/' /etc/systemd/resolved.conf && sudo systemctl restart systemd-resolved|Restore resolved.conf, restart"
+"Disable LLMNR (systemd-resolved)|grep -E '^[[:space:]]*LLMNR' /etc/systemd/resolved.conf 2>/dev/null || echo '(default = yes)'|harden_llmnr|Restore /etc/systemd/resolved.conf from the .bak.* backup, restart systemd-resolved"
 
 "Sysctl: drop ICMP redirects + enable kptr_restrict|sysctl net.ipv4.conf.all.accept_redirects kernel.kptr_restrict 2>/dev/null|printf 'net.ipv4.conf.all.accept_redirects=0\nnet.ipv4.conf.default.accept_redirects=0\nnet.ipv6.conf.all.accept_redirects=0\nkernel.kptr_restrict=2\nkernel.dmesg_restrict=1\n' | sudo tee /etc/sysctl.d/99-blueteam.conf > /dev/null && sudo sysctl -p /etc/sysctl.d/99-blueteam.conf|sudo rm /etc/sysctl.d/99-blueteam.conf and reboot"
 
-"Remove pkexec setuid bit (PwnKit workaround)|stat -c '%a' /usr/bin/pkexec 2>/dev/null || echo 'not present'|sudo chmod 0755 /usr/bin/pkexec|sudo chmod 4755 /usr/bin/pkexec"
+"FUNCTIONALITY-REMOVING: drop pkexec setuid (PwnKit; can break polkit auth)|stat -c '%a' /usr/bin/pkexec 2>/dev/null || echo 'not present'|harden_remove_pkexec_setuid|sudo chmod 4755 /usr/bin/pkexec"
 
-"Disable nf_tables module (CVE-2024-1086 if unused)|lsmod | grep -E '^nf_tables' || echo 'not loaded'|sudo modprobe -r nf_tables 2>/dev/null; echo 'blacklist nf_tables' | sudo tee /etc/modprobe.d/blacklist-nf_tables.conf > /dev/null|sudo rm /etc/modprobe.d/blacklist-nf_tables.conf"
+"FUNCTIONALITY-REMOVING: unload+blacklist nf_tables (CVE-2024-1086; can drop the firewall)|lsmod | grep -E '^nf_tables' || echo 'not loaded'|harden_disable_nf_tables|sudo rm /etc/modprobe.d/blacklist-nf_tables.conf"
 
 "ClamAV freshclam baseline|systemctl is-active clamav-freshclam 2>/dev/null || echo 'inactive'|sudo apt-get install -y clamav clamav-daemon && sudo systemctl enable --now clamav-freshclam|sudo systemctl disable --now clamav-freshclam"
 
-"Lynis baseline audit (read-only, generates report)|command -v lynis || echo 'not installed'|sudo apt-get install -y lynis && sudo lynis audit system --quick --quiet > '$OUTPUT_DIR/lynis-baseline.txt' 2>&1|N/A — read-only"
+"Lynis baseline audit (read-only, generates report)|command -v lynis || echo 'not installed'|sudo apt-get install -y lynis && sudo lynis audit system --quick --quiet > '$OUTPUT_DIR/lynis-baseline.txt' 2>&1|N/A, read-only"
 
 "Snapshot package state to baseline|ls $OUTPUT_DIR/baseline-pkgs.txt 2>/dev/null || echo 'no baseline yet'|dpkg -l > '$OUTPUT_DIR/baseline-pkgs.txt' 2>/dev/null && find / -perm -4000 -type f 2>/dev/null > '$OUTPUT_DIR/baseline-suid.txt' && lsmod > '$OUTPUT_DIR/baseline-modules.txt' && echo 'baseline written'|rm baselines"
 
@@ -71,7 +144,9 @@ run_item() {
   case "$ans" in
     y|Y)
       log "APPLY: $label"
-      bash -c "$apply" 2>&1 | tee -a "$LOG_FILE"
+      # eval (not bash -c) so the apply helpers defined above are in scope, and
+      # so interactive guards (read -rp) can prompt on the real terminal.
+      eval "$apply" 2>&1 | tee -a "$LOG_FILE"
       log "RESULT exit=${PIPESTATUS[0]}"
       ;;
     q|Q)

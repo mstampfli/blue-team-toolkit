@@ -12,7 +12,7 @@ if [[ ! -f "$F" ]]; then
 fi
 
 mode=$(whiptail --title "Findings history" --menu "View mode:" 18 70 5 \
-  "SUMMARY"  "Group by host+type+target — count, first/last seen" \
+  "SUMMARY"  "Group by host+type+target, count, first/last seen" \
   "RECENT"   "Last 50 findings (raw)" \
   "BY_TYPE"  "Filter by finding type" \
   "EXPORT"   "Export deduped CSV to output/findings-summary.csv" \

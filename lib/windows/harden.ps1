@@ -16,7 +16,7 @@ Write-Log "HARDEN start (DryRun=$DryRun)"
 # Each item: hashtable with Label, Check (scriptblock), Apply (scriptblock), Rollback (string)
 $items = @(
     @{
-        Label    = "LSA Protection (RunAsPPL=1) -- breaks Mimikatz LSASS read"
+        Label    = "LSA Protection (RunAsPPL=1) -- breaks Mimikatz LSASS read  [WARNING: can affect logon/authentication and driver loading; test on a non-critical host first]"
         Check    = { (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -ErrorAction SilentlyContinue).RunAsPPL }
         Apply    = { New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RunAsPPL' -Value 1 -PropertyType DWord -Force | Out-Null }
         Rollback = "Remove RunAsPPL value from same key, then reboot"
@@ -40,9 +40,25 @@ $items = @(
         Rollback = "Set the same value back to 0"
     },
     @{
-        Label    = "Disable Print Spooler (PrintNightmare -- DO THIS ON DCs)"
+        Label    = "Disable Print Spooler (PrintNightmare -- intended for DCs)"
         Check    = { (Get-Service Spooler).Status }
-        Apply    = { Stop-Service Spooler -Force; Set-Service Spooler -StartupType Disabled }
+        Apply    = {
+            # Disabling the spooler breaks all printing. Auto-apply only on a DC
+            # (per facts.json role.is_dc); otherwise warn and require an extra confirm.
+            $isDc = $false
+            $factsPath = Join-Path $Script:OutputDir 'facts.json'
+            if (Test-Path $factsPath) {
+                try { $isDc = [bool](Get-Content $factsPath -Raw | ConvertFrom-Json).role.is_dc } catch { $isDc = $false }
+            }
+            if (-not $isDc) {
+                Write-Host "WARNING: this host is not detected as a DC. Disabling the spooler will break all printing on this host." -ForegroundColor Yellow
+                if (-not (Confirm-YesNo "Disable Print Spooler anyway?")) {
+                    Write-Host "Skipped (spooler left running)." -ForegroundColor DarkGray
+                    return
+                }
+            }
+            Stop-Service Spooler -Force; Set-Service Spooler -StartupType Disabled
+        }
         Rollback = "Set-Service Spooler -StartupType Automatic; Start-Service Spooler"
     },
     @{
@@ -67,7 +83,7 @@ $items = @(
         Rollback = "Set-Service WinHttpAutoProxySvc -StartupType Manual"
     },
     @{
-        Label    = "LmCompatibilityLevel = 5 (NTLMv2 only)"
+        Label    = "LmCompatibilityLevel = 5 (NTLMv2 only)  [WARNING: can affect logon/authentication with older clients; test on a non-critical host first]"
         Check    = { (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -ErrorAction SilentlyContinue).LmCompatibilityLevel }
         Apply    = { Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'LmCompatibilityLevel' -Type DWord -Value 5 }
         Rollback = "Set value back to 3 (default)"
@@ -96,9 +112,11 @@ $items = @(
         Label    = "Block outbound SMB to internet (TCP 445)"
         Check    = { Get-NetFirewallRule -DisplayName 'Block outbound SMB to Internet' -ErrorAction SilentlyContinue }
         Apply    = {
+            # Scope to Private,Public only. Including the Domain profile would block
+            # SMB to domain controllers and break SYSVOL/GPO on domain-joined hosts.
             New-NetFirewallRule -DisplayName 'Block outbound SMB to Internet' `
                 -Direction Outbound -Action Block -Protocol TCP -RemotePort 445 `
-                -Profile Public, Domain, Private -Enabled True | Out-Null
+                -Profile Public, Private -Enabled True | Out-Null
         }
         Rollback = "Remove-NetFirewallRule -DisplayName 'Block outbound SMB to Internet'"
     },
@@ -114,7 +132,7 @@ $items = @(
             auditpol /set /subcategory:"Sensitive Privilege Use" /success:enable /failure:enable | Out-Null
             auditpol /set /subcategory:"Account Lockout"     /success:enable /failure:enable | Out-Null
         }
-        Rollback = "auditpol /clear (be careful)"
+        Rollback = "Back up first with 'auditpol /backup /file:audit-backup.csv', then restore the specific subcategories you changed to /success:disable /failure:disable (or 'auditpol /restore /file:audit-backup.csv'). Do NOT use 'auditpol /clear', it wipes ALL auditing."
     },
     @{
         Label    = "Defender: enable real-time monitoring (tamper protection must be set in UI)"

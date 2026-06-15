@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tool installer — manifest-driven, dispatches per method.
+# Tool installer, manifest-driven, dispatches per method.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -15,7 +15,7 @@ build_checklist() {
   jq -r '
     .tools[]
     | select(.linux != null)
-    | [.id, ((.name | gsub("\t";" ")) + " — " + (.description | gsub("\t";" "))), (if .star then "ON" else "OFF" end)]
+    | [.id, ((.name | gsub("\t";" ")) + ", " + (.description | gsub("\t";" "))), (if .star then "ON" else "OFF" end)]
     | @tsv
   ' "$MANIFEST"
 }
@@ -92,7 +92,7 @@ install_one() {
     manual)
       local note; note=$(echo "$entry" | jq -r '.linux.note')
       echo "MANUAL ($id): $note" | tee -a "$INSTALL_LOG"
-      log "MANUAL: $id — $note"
+      log "MANUAL: $id, $note"
       ;;
     *) echo "Unknown method '$method' for $id" | tee -a "$INSTALL_LOG" ;;
   esac
@@ -106,7 +106,7 @@ main() {
   clear
   local mode
   mode=$(whiptail --title "Install mode" --menu "How to install?" 16 78 4 \
-    "ALL"    "Install EVERY Linux tool from manifest (recommended Day 1)" \
+    "ALL"    "Install EVERY Linux tool from manifest (recommended on first run)" \
     "CUSTOM" "Pick from checklist (★ pre-selected)" \
     "QUIT"   "Back to menu" \
     3>&1 1>&2 2>&3) || return 0
@@ -120,7 +120,7 @@ main() {
   [[ -z "$selection" ]] && return 0
 
   clear
-  echo "[installer] installing $(echo "$selection" | wc -w) tools — output captured to $INSTALL_LOG"
+  echo "[installer] installing $(echo "$selection" | wc -w) tools, output captured to $INSTALL_LOG"
   echo
 
   local count=0 total
